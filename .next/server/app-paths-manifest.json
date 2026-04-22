@@ -1,0 +1,11 @@
+{
+  "/page": "app/page.js",
+  "/item/[id]/page": "app/item/[id]/page.js",
+  "/report/page": "app/report/page.js",
+  "/archive/page": "app/archive/page.js",
+  "/claims/page": "app/claims/page.js",
+  "/search/page": "app/search/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/profile/page": "app/profile/page.js",
+  "/student-login/page": "app/student-login/page.js"
+}
