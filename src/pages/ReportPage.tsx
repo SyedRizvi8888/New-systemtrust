@@ -176,6 +176,7 @@ export default function ReportPage() {
         claimedBy: undefined,
         claimedAt: undefined,
         createdBy: user.id,
+        approvalStatus: 'pending',
       });
 
       // Show success modal with context-specific instructions

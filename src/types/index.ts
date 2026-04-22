@@ -9,9 +9,8 @@
  * - under_review: Office reviewing possible matches
  * - matched: Office found a match, waiting for pickup/claim
  * - returned: Item successfully returned to owner
- * - archived: Item expired or archived after extended period
  */
-export type ItemStatus = 'found' | 'lost' | 'under_review' | 'matched' | 'returned' | 'archived';
+export type ItemStatus = 'found' | 'lost' | 'under_review' | 'matched' | 'returned';
 
 /**
  * Categories for classifying lost and found items
@@ -58,6 +57,10 @@ export interface LostItem {
   createdBy?: string; // User ID of who created/reported this item
   tenantId?: string; // Storage namespace identifier for local isolation
   adminNotes?: string; // Internal notes for office staff
+  approvalStatus?: 'pending' | 'approved' | 'rejected'; // Admin approval status
+  approvedBy?: string; // Admin user ID who approved
+  approvedAt?: string; // When item was approved
+  rejectionReason?: string; // If rejected, why
   createdAt: string;
   updatedAt: string;
 }
@@ -133,4 +136,22 @@ export interface FilterState {
   status: ItemStatus | 'all';
   search: string;
   dateRange: 'all' | 'today' | 'week' | 'month';
+}
+
+/**
+ * Question asked by students about items
+ */
+export interface ItemQuestion {
+  id: string;
+  itemId: string;
+  askedByUserId: string;
+  askedByName: string;
+  askedByEmail: string;
+  questionText: string;
+  replyText?: string;
+  repliedByUserId?: string;
+  repliedAt?: string;
+  status: 'unanswered' | 'answered' | 'archived';
+  createdAt: string;
+  updatedAt: string;
 }

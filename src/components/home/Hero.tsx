@@ -70,7 +70,7 @@ export function Hero() {
             </div>
           </div>
 
-          <div className="relative">
+          {/* <div className="relative">
             <div className="absolute -inset-3 bg-gradient-to-br from-green-200/30 to-slate-300/20 dark:from-green-800/30 dark:to-slate-700/20 blur-2xl rounded-3xl" />
             <div className="relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/85 p-5 shadow-xl">
               <div className="flex items-center justify-between mb-4">
@@ -121,7 +121,7 @@ export function Hero() {
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
 
         <div className="mt-10 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-900 text-slate-100 p-5 md:p-6 shadow-lg">

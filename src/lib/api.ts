@@ -31,6 +31,10 @@ type DbLostItem = {
   claimed_by?: string | null;
   claimed_at?: string | null;
   admin_notes?: string | null;
+  approval_status?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
   created_at: string;
   updated_at: string;
   created_by?: string | null;
@@ -110,6 +114,10 @@ const mapDbItem = (row: DbLostItem): LostItem => ({
   claimedBy: row.claimed_by ?? undefined,
   claimedAt: row.claimed_at ?? undefined,
   adminNotes: row.admin_notes ?? undefined,
+  approvalStatus: (row.approval_status as LostItem['approvalStatus']) ?? undefined,
+  approvedBy: row.approved_by ?? undefined,
+  approvedAt: row.approved_at ?? undefined,
+  rejectionReason: row.rejection_reason ?? undefined,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   createdBy: row.created_by ?? undefined,
@@ -192,6 +200,10 @@ const toDbItemPayload = (item: Partial<LostItem>): Partial<DbLostItem> => ({
   claimed_by: item.claimedBy,
   claimed_at: item.claimedAt,
   admin_notes: item.adminNotes,
+  approval_status: item.approvalStatus,
+  approved_by: item.approvedBy,
+  approved_at: item.approvedAt,
+  rejection_reason: item.rejectionReason,
   created_at: item.createdAt,
   updated_at: item.updatedAt,
   created_by: item.createdBy,
@@ -238,15 +250,40 @@ const ensureSupabase = () => {
  * @returns Promise resolving to array of LostItem objects
  * @throws {Error} When Supabase is not configured or database query fails
  */
+/**
+ * Fetches all items (only approved items for public, all for admin)
+ * @returns List of visible lost items
+ */
 export async function fetchItems(): Promise<LostItem[]> {
   ensureSupabase();
   const { data, error } = await supabase
     .from('lost_items')
     .select('*')
+    .eq('approval_status', 'approved')
     .order('created_at', { ascending: false });
 
   if (error) {
     console.error('Failed to fetch items:', error);
+    throw error;
+  }
+
+  return (data ?? []).map(mapDbItem);
+}
+
+/**
+ * Fetches pending items awaiting admin approval
+ * @returns List of pending lost items
+ */
+export async function fetchPendingItems(): Promise<LostItem[]> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('lost_items')
+    .select('*')
+    .eq('approval_status', 'pending')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to fetch pending items:', error);
     throw error;
   }
 
@@ -289,7 +326,12 @@ export async function createItem(
 ): Promise<LostItem> {
   ensureSupabase();
   const now = new Date().toISOString();
-  const payload = toDbItemPayload({ ...item, createdAt: now, updatedAt: now });
+  const payload = toDbItemPayload({
+    ...item,
+    createdAt: now,
+    updatedAt: now,
+    approvalStatus: 'pending', // NEW ITEMS START AS PENDING
+  });
   const { data, error } = await supabase
     .from('lost_items')
     .insert(payload)
@@ -837,3 +879,184 @@ export async function sendAdminMessageToClaimant(params: {
     );
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ITEM APPROVAL FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Approve a pending item
+ * @param itemId - UUID of the item to approve
+ * @param adminUserId - User ID of the admin approving
+ * @returns Updated item
+ */
+export async function approveItem(itemId: string, adminUserId: string): Promise<LostItem | null> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('lost_items')
+    .update({
+      approval_status: 'approved',
+      approved_by: adminUserId,
+      approved_at: new Date().toISOString(),
+    })
+    .eq('id', itemId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Failed to approve item:', error);
+    throw error;
+  }
+
+  return mapDbItem(data as DbLostItem);
+}
+
+/**
+ * Reject a pending item
+ * @param itemId - UUID of the item to reject
+ * @param adminUserId - User ID of the admin rejecting
+ * @param reason - Reason for rejection
+ * @returns Updated item
+ */
+export async function rejectItem(
+  itemId: string,
+  adminUserId: string,
+  reason: string
+): Promise<LostItem | null> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('lost_items')
+    .update({
+      approval_status: 'rejected',
+      approved_by: adminUserId,
+      approved_at: new Date().toISOString(),
+      rejection_reason: reason,
+    })
+    .eq('id', itemId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Failed to reject item:', error);
+    throw error;
+  }
+
+  return mapDbItem(data as DbLostItem);
+}
+
+
+/**
+ * Fetch all questions for an item
+ * @param itemId - UUID of the item
+ * @returns Array of questions with answers
+ */
+export async function fetchItemQuestions(itemId: string): Promise<any[]> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('item_questions')
+    .select('*')
+    .eq('item_id', itemId)
+    .eq('status', 'unanswered')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to fetch questions:', error);
+    throw error;
+  }
+
+  return data ?? [];
+}
+
+/**
+ * Create a new question on an item
+ * @param itemId - UUID of the item
+ * @param questionText - The question text
+ * @param userId - User asking the question
+ * @param userName - Name of the user asking
+ * @param userEmail - Email of the user asking
+ * @returns Created question
+ */
+export async function createItemQuestion(
+  itemId: string,
+  questionText: string,
+  userId: string,
+  userName: string,
+  userEmail: string
+): Promise<any> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('item_questions')
+    .insert({
+      item_id: itemId,
+      asked_by_user_id: userId,
+      asked_by_name: userName,
+      asked_by_email: userEmail,
+      question_text: questionText,
+      status: 'unanswered',
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Failed to create question:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Reply to a question (item creator/admin only)
+ * @param questionId - UUID of the question
+ * @param replyText - The reply text
+ * @param userId - User ID of the replier
+ * @returns Updated question
+ */
+export async function replyToQuestion(
+  questionId: string,
+  replyText: string,
+  userId: string
+): Promise<any> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('item_questions')
+    .update({
+      reply_text: replyText,
+      replied_by_user_id: userId,
+      replied_at: new Date().toISOString(),
+      status: 'answered',
+    })
+    .eq('id', questionId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Failed to reply to question:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+/**
+ * Get answered questions for an item
+ * @param itemId - UUID of the item
+ * @returns Array of answered questions
+ */
+export async function fetchAnsweredQuestions(itemId: string): Promise<any[]> {
+  ensureSupabase();
+  const { data, error } = await supabase
+    .from('item_questions')
+    .select('*')
+    .eq('item_id', itemId)
+    .eq('status', 'answered')
+    .order('replied_at', { ascending: false });
+
+  if (error) {
+    console.error('Failed to fetch answered questions:', error);
+    throw error;
+  }
+
+  return data ?? [];
+}
+

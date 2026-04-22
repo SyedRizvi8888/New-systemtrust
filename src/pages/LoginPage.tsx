@@ -147,134 +147,147 @@ export default function LoginPage({ mode = 'admin' }: LoginPageProps) {
 
   return (
     <Layout>
-      <section className="py-12 md:py-20 min-h-screen flex items-center bg-slate-50 dark:bg-slate-900">
-        <div className="container-narrow">
-          <div className="max-w-md mx-auto">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <div className="flex justify-center mb-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg">
-                  <Building2 className="h-8 w-8" />
-                </div>
+      <section className="min-h-screen w-full flex items-center justify-center px-4 sm:px-6 lg:px-8 py-8 md:py-12 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <div className="w-full max-w-md">
+          {/* Logo/Header */}
+          <div className="text-center mb-8 sm:mb-10">
+            <div className="flex justify-center mb-4">
+              <div className="inline-flex h-14 w-14 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg">
+                <Building2 className="h-6 w-6 sm:h-8 sm:w-8" />
               </div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
-                {isSignUp ? 'Create Student Account' : isAdminMode ? 'Administrator Sign In' : 'Student Sign In'}
-              </h1>
-              <p className="text-slate-600 dark:text-slate-300">
-                {isSignUp
-                  ? 'Register your student account for claims and item tracking'
-                  : isAdminMode
-                  ? 'Sign in to manage lost & found items'
-                  : 'Sign in to report, track, and claim items'}
-              </p>
             </div>
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-blue-700 bg-clip-text text-transparent mb-3">
+              {isSignUp ? 'Create Account' : isAdminMode ? 'Admin Sign In' : 'Student Sign In'}
+            </h1>
+            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-sm mx-auto">
+              {isSignUp
+                ? 'Join the community to report, track, and claim items'
+                : isAdminMode
+                ? 'Access the admin dashboard to manage items'
+                : 'Sign in to your account'}
+            </p>
+          </div>
 
-            {/* Form */}
-            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-6 md:p-8">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {error && (
-                  <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                    <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
-                  </div>
-                )}
+          {/* Form Card */}
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm p-6 sm:p-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Error Message */}
+              {error && (
+                <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3 animate-in">
+                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700 dark:text-red-200">{error}</p>
+                </div>
+              )}
 
-                {isSignUp && canSignUp && (
-                  <div className="space-y-2">
-                    <Label htmlFor="username" className="text-slate-900 dark:text-slate-100">Full name *</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
-                        id="username"
-                        type="text"
-                        placeholder="First Last"
-                        value={formData.username}
-                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                        className="pl-10 h-11 border-slate-300 dark:border-slate-600"
-                        required
-                        minLength={3}
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Enter first and last name. Letters, spaces, hyphens, and apostrophes only.
-                    </p>
-                  </div>
-                )}
-
+              {/* Full Name Field (Sign Up) */}
+              {isSignUp && canSignUp && (
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-slate-900 dark:text-slate-100">Email Address</Label>
+                  <Label htmlFor="username" className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Full Name *
+                  </Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="your.email@school.edu"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="pl-10 h-11 border-slate-300 dark:border-slate-600"
+                      id="username"
+                      type="text"
+                      placeholder="John Doe"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                      className="pl-10 h-11 sm:h-12 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
+                      minLength={3}
                     />
                   </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">First and last name required</p>
                 </div>
+              )}
 
+              {/* Email Field */}
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Email Address *
+                </Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="you@school.edu"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="pl-10 h-11 sm:h-12 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Password Field */}
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  Password *
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="pl-10 h-11 sm:h-12 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              </div>
+
+              {/* Confirm Password Field (Sign Up) */}
+              {isSignUp && (
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-slate-900 dark:text-slate-100">Password</Label>
+                  <Label htmlFor="confirmPassword" className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Confirm Password *
+                  </Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <Input
-                      id="password"
+                      id="confirmPassword"
                       type="password"
                       placeholder="••••••••"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="pl-10 h-11 border-slate-300 dark:border-slate-600"
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      className="pl-10 h-11 sm:h-12 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       required
                       minLength={6}
                     />
                   </div>
                 </div>
+              )}
 
-                {isSignUp && (
-                  <div className="space-y-2">
-                    <Label htmlFor="confirmPassword" className="text-slate-900 dark:text-slate-100">Confirm Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        placeholder="••••••••"
-                        value={formData.confirmPassword}
-                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                        className="pl-10 h-11 border-slate-300 dark:border-slate-600"
-                        required
-                        minLength={6}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-semibold mt-6"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                className="w-full h-11 sm:h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold mt-6 sm:mt-8 rounded-lg transition-all duration-200"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="hidden sm:inline">
                       {isSignUp ? 'Creating Account...' : 'Signing In...'}
                     </span>
-                  ) : (
-                    <>
-                      <LogIn className="h-4 w-4 mr-2" />
-                      {isSignUp ? 'Create Account' : 'Sign In'}
-                    </>
-                  )}
-                </Button>
-              </form>
+                  </span>
+                ) : (
+                  <>
+                    <LogIn className="h-4 w-4 mr-2" />
+                    <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
+                  </>
+                )}
+              </Button>
+            </form>
 
-              {/* Toggle Sign Up/Sign In */}
-              {canSignUp && (
-              <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 text-center">
+            {/* Toggle Sign Up/Sign In */}
+            {canSignUp && (
+              <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-slate-200 dark:border-slate-700 text-center">
                 <button
                   type="button"
                   onClick={() => {
@@ -282,27 +295,26 @@ export default function LoginPage({ mode = 'admin' }: LoginPageProps) {
                     setError(null);
                     setFormData({ email: '', password: '', confirmPassword: '', username: '' });
                   }}
-                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
                 >
                   {isSignUp ? (
-                    <>Already have an account? <span className="text-blue-600 dark:text-blue-400 font-semibold">Sign in</span></>
+                    <>Already have an account? <span className="text-blue-600 dark:text-blue-400">Sign in</span></>
                   ) : (
-                    <>Don't have an account? <span className="text-blue-600 dark:text-blue-400 font-semibold">Sign up</span></>
+                    <>Don't have an account? <span className="text-blue-600 dark:text-blue-400">Sign up</span></>
                   )}
                 </button>
               </div>
-              )}
-            </div>
+            )}
+          </div>
 
-            {/* Back to Home */}
-            <div className="mt-6 text-center">
-              <Link
-                href={isAdminMode ? '/student-login' : '/login'}
-                className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
-              >
-                {isAdminMode ? '← Student Login' : '← Admin Login'}
-              </Link>
-            </div>
+          {/* Back to Home Link */}
+          <div className="mt-6 sm:mt-8 text-center">
+            <Link
+              href={isAdminMode ? '/student-login' : '/login'}
+              className="inline-flex items-center gap-1 text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition-colors"
+            >
+              ← {isAdminMode ? 'Student Login' : 'Admin Login'}
+            </Link>
           </div>
         </div>
       </section>

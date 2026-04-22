@@ -17,7 +17,7 @@ export function SubmissionSuccessModal({ open, onClose, type, studentEmail }: Su
       case 'found':
         return {
           title: 'Report submitted successfully!',
-          description: 'Thank you for reporting this found item.',
+          description: 'Thank you for reporting this found item. Office staff will review and approve it.',
           steps: [
             {
               icon: MapPin,
@@ -25,14 +25,14 @@ export function SubmissionSuccessModal({ open, onClose, type, studentEmail }: Su
               text: 'Please bring the found item to the main office/help desk as soon as possible.',
             },
             {
-              icon: Mail,
-              title: 'Office will store it',
-              text: 'The office will store and manage the item. You\'ll receive email confirmation.',
+              icon: Clock,
+              title: 'Under admin review',
+              text: 'The office will review your report. You\'ll receive email confirmation at ' + studentEmail + ' when it\'s approved.',
             },
             {
-              icon: Clock,
-              title: 'Status updates',
-              text: 'Watch your email at ' + studentEmail + ' for updates when items are claimed or picked up.',
+              icon: Mail,
+              title: 'Item posted to community',
+              text: 'Once approved, the item will appear in the search so others can find it.',
             },
           ],
           action: 'Browse items',
@@ -41,22 +41,22 @@ export function SubmissionSuccessModal({ open, onClose, type, studentEmail }: Su
       case 'lost':
         return {
           title: 'Lost item report submitted!',
-          description: 'Your report has been sent to the office for review.',
+          description: 'Your report has been sent to the office for admin review and approval.',
           steps: [
             {
               icon: Mail,
-              title: 'Check your email',
-              text: 'The office will review possible matches and may contact you at ' + studentEmail + '.',
+              title: 'Waiting for admin approval',
+              text: 'Office staff will review your report and contact you at ' + studentEmail + ' if they need more details.',
             },
             {
               icon: Clock,
-              title: 'Check office for urgent items',
-              text: 'If your item is urgent, visit the main office right away. They may have it already!',
+              title: 'Check your email',
+              text: 'Once approved, your lost item will be posted for the community to see.',
             },
             {
               icon: MapPin,
               title: 'Bring any proof',
-              text: 'If you find photos of your item online, bring them to the office to speed up verification.',
+              text: 'If you find photos of your item online, bring them to the office to speed up approval.',
             },
           ],
           action: 'View your reports',

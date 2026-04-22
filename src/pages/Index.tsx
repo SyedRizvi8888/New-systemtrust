@@ -11,7 +11,7 @@ const Index = () => {
       <Hero />
       <FeatureCards />
       <RecentItems />
-      <QRMobileAccess />
+      {/* <QRMobileAccess /> */}
       <StatsSection />
     </Layout>
   );

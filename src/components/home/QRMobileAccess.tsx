@@ -21,7 +21,7 @@ const quickActions = [
 export function QRMobileAccess() {
   return (
     <section className="py-12 md:py-16 bg-slate-50 dark:bg-slate-800/60 border-y border-slate-200 dark:border-slate-700">
-      <div className="container-wide">
+      {/* <div className="container-wide">
         <div className="grid lg:grid-cols-2 gap-8 items-center">
           <div>
             <p className="text-xs uppercase tracking-wide font-semibold text-green-700 dark:text-green-300 mb-2">QR Mobile Access</p>
@@ -73,7 +73,7 @@ export function QRMobileAccess() {
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
     </section>
   );
 }

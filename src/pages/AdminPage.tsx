@@ -1,16 +1,3 @@
-/**
- * Admin Dashboard Page
- * 
- * Provides administrative interface for managing lost items and claim requests.
- * Features include:
- * - Statistics overview
- * - Recent items management
- * - Claim request review and approval
- * - Item status updates
- * 
- * @page AdminPage
- */
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -19,46 +6,34 @@ import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  statusColors, 
+import {
+  statusColors,
   categoryLabels,
   categoryIcons,
 } from '@/lib/mockData';
-import { ClaimCase, ClaimCaseEvent, ClaimRequest, LostItem } from '@/types';
-import { 
-  Package, 
-  ClipboardList, 
-  CheckCircle2, 
-  Search,
+import { LostItem, ClaimRequest } from '@/types';
+import {
+  Package,
   Check,
   X,
   Eye,
-  Megaphone,
-  MessageSquare,
-  ShieldAlert,
-  ClipboardCheck,
-  CheckCircle
+  AlertCircle,
+  FileText,
+  Mail,
+  Phone,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  addClaimCaseEvent,
-  ensureClaimCaseForClaim,
-  fetchClaimCaseEvents,
-  fetchClaimCases,
-  fetchClaims,
-  fetchEvidenceByClaim,
   fetchItems,
-  sendAdminMessageToClaimant,
-  updateClaim,
-  updateClaimCase,
   updateItem,
+  fetchClaims,
+  updateClaim,
+  fetchItemById,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
-/**
- * Props for StatCard component displaying dashboard metrics
- */
 interface StatCardProps {
   icon: React.ElementType;
   value: number;
@@ -84,299 +59,181 @@ function StatCard({ icon: Icon, value, label, color, bgColor }: StatCardProps) {
 export default function AdminPage() {
   const { user } = useAuth();
   const [items, setItems] = useState<LostItem[]>([]);
-  const [claims, setClaims] = useState<ClaimRequest[]>([]);
-  const [claimCases, setClaimCases] = useState<Record<string, ClaimCase>>({});
-  const [caseEvents, setCaseEvents] = useState<Record<string, ClaimCaseEvent[]>>({});
-  const [evidence, setEvidence] = useState<Record<string, any[]>>({});
-  const [activeTab, setActiveTab] = useState<'review' | 'items'>('review');
+  const [claims, setClaims] = useState<(ClaimRequest & { itemTitle?: string })[]>([]);
+  const [activeTab, setActiveTab] = useState<'pending-items' | 'pending-claims' | 'all-items'>('pending-items');
   const [isLoading, setIsLoading] = useState(true);
-  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
-  const [sendingMessageFor, setSendingMessageFor] = useState<string | null>(null);
-  const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
-  const [savingNotesFor, setSavingNotesFor] = useState<string | null>(null);
-  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [actionBusyClaimId, setActionBusyClaimId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [claimRejectReason, setClaimRejectReason] = useState<Record<string, string>>({});
+  const [claimRejectingId, setClaimRejectingId] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadItems = async () => {
     try {
       setIsLoading(true);
-      const [itemsData, claimsData, casesData] = await Promise.all([
-        fetchItems(),
-        fetchClaims(),
-        fetchClaimCases(),
-      ]);
-      setItems(itemsData);
-      setClaims(claimsData);
-
-      const casesMap: Record<string, ClaimCase> = {};
-      casesData.forEach((claimCase) => {
-        casesMap[claimCase.claimRequestId] = claimCase;
-      });
-
-      const missingCases = claimsData.filter((claim) => !casesMap[claim.id]);
-      if (missingCases.length > 0) {
-        const createdCases = await Promise.all(
-          missingCases.map((claim) => ensureClaimCaseForClaim(claim.id))
-        );
-        createdCases.forEach((claimCase) => {
-          casesMap[claimCase.claimRequestId] = claimCase;
-        });
-      }
-
-      setClaimCases(casesMap);
-
-      if (!selectedClaimId && claimsData.length > 0) {
-        setSelectedClaimId(claimsData[0].id);
-      }
-
-      // Load evidence for all claims
-      const evidenceMap: Record<string, any[]> = {};
-      for (const claim of claimsData) {
-        const claimEvidence = await fetchEvidenceByClaim(claim.id);
-        if (claimEvidence.length > 0) {
-          evidenceMap[claim.id] = claimEvidence;
-        }
-      }
-      setEvidence(evidenceMap);
+      const allItems = await fetchItems();
+      setItems(allItems);
+      
+      // Load all claims
+      const allClaims = await fetchClaims();
+      
+      // Enrich claims with item titles
+      const enrichedClaims = await Promise.all(
+        allClaims.map(async (claim) => {
+          try {
+            const item = await fetchItemById(claim.itemId);
+            return {
+              ...claim,
+              itemTitle: item?.title || 'Unknown Item',
+            };
+          } catch {
+            return {
+              ...claim,
+              itemTitle: 'Unknown Item',
+            };
+          }
+        })
+      );
+      
+      setClaims(enrichedClaims);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(err);
-      toast.error('Failed to load admin data');
+      toast.error('Failed to load data');
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    void loadData();
+    void loadItems();
   }, []);
 
-  useEffect(() => {
-    const run = async () => {
-      if (!selectedClaimId) return;
-      const claimCase = claimCases[selectedClaimId];
-      if (!claimCase) return;
-      try {
-        const events = await fetchClaimCaseEvents(claimCase.id);
-        setCaseEvents((prev) => ({ ...prev, [selectedClaimId]: events }));
-      } catch (error) {
-        console.error('Failed to load claim case events:', error);
-      }
-    };
-
-    void run();
-  }, [selectedClaimId, claimCases]);
+  const pendingItems = items.filter(i => i.approvalStatus === 'pending');
+  const approvedItems = items.filter(i => i.approvalStatus === 'approved');
+  const rejectedItems = items.filter(i => i.approvalStatus === 'rejected');
+  const pendingClaims = claims.filter(c => c.status === 'pending');
+  const approvedClaims = claims.filter(c => c.status === 'approved');
+  const rejectedClaims = claims.filter(c => c.status === 'rejected');
 
   const stats = {
-    total: items.length,
-    found: items.filter(i => i.status === 'found').length,
-    missing: items.filter(i => i.status === 'lost').length,
-    returned: items.filter(i => i.status === 'returned').length,
-    pendingClaims: claims.filter(c => c.status === 'pending' || c.status === 'needs_info').length,
+    pendingItems: pendingItems.length,
+    approvedItems: approvedItems.length,
+    rejectedItems: rejectedItems.length,
+    totalItems: items.length,
+    pendingClaims: pendingClaims.length,
+    approvedClaims: approvedClaims.length,
+    rejectedClaims: rejectedClaims.length,
+    totalClaims: claims.length,
   };
 
-  const statusLabel = (status: ClaimRequest['status']) => {
-    switch (status) {
-      case 'needs_info':
-        return 'needs info';
-      case 'pickup_scheduled':
-        return 'ready for pickup';
-      default:
-        return status;
-    }
-  };
-
-  const priorityLabel = (priority?: ClaimCase['priority']) => {
-    if (!priority) return 'normal';
-    return priority;
-  };
-
-  const priorityClass = (priority?: ClaimCase['priority']) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-destructive/15 text-destructive';
-      case 'high':
-        return 'bg-warning/20 text-warning';
-      case 'low':
-        return 'bg-muted text-muted-foreground';
-      default:
-        return 'bg-secondary/60 text-foreground';
-    }
-  };
-
-  const runClaimAction = async (params: {
-    claim: ClaimRequest;
-    nextStatus: ClaimRequest['status'];
-    caseState: ClaimCase['state'];
-    casePriority?: ClaimCase['priority'];
-    itemStatus?: LostItem['status'];
-    eventType: string;
-    eventNotes?: string;
-  }) => {
-    const { claim, nextStatus, caseState, casePriority, itemStatus, eventType, eventNotes } = params;
-    const item = items.find(i => i.id === claim.itemId);
-
+  const handleApproveItem = async (item: LostItem) => {
     try {
-      setActionBusyClaimId(claim.id);
-      const claimCase = claimCases[claim.id] ?? await ensureClaimCaseForClaim(claim.id);
-      const updatedCase = await updateClaimCase(claimCase.id, {
-        state: caseState,
-        priority: casePriority ?? claimCase.priority,
-        closedAt: caseState === 'closed' ? new Date().toISOString() : claimCase.closedAt,
+      setProcessingId(item.id);
+      await updateItem(item.id, {
+        approvalStatus: 'approved',
+        approvedBy: user?.id,
+        approvedAt: new Date().toISOString(),
       });
-
-      await updateClaim(claim.id, {
-        status: nextStatus,
-        reviewedAt: new Date().toISOString(),
-        reviewedBy: user?.id,
-      });
-
-      if (item && itemStatus) {
-        await updateItem(item.id, {
-          status: itemStatus,
-          claimedBy: nextStatus === 'closed' ? claim.claimantName : item.claimedBy,
-          claimedAt: nextStatus === 'closed' ? new Date().toISOString() : item.claimedAt,
-        });
-      }
-
-      if (updatedCase) {
-        await addClaimCaseEvent({
-          claimCaseId: updatedCase.id,
-          eventType,
-          fromState: claimCase.state,
-          toState: updatedCase.state,
-          actorUserId: user?.id,
-          notes: eventNotes,
-        });
-      }
-
-      await loadData();
-      toast.success('Claim updated');
+      toast.success('Item approved and now visible');
+      await loadItems();
     } catch (error) {
-      console.error('Failed to update claim:', error);
-      toast.error('Failed to update claim');
+      console.error('Failed to approve:', error);
+      toast.error('Failed to approve item');
     } finally {
-      setActionBusyClaimId(null);
+      setProcessingId(null);
     }
   };
 
-  const handleSendMessage = async (claim: ClaimRequest) => {
-    const message = (messageDrafts[claim.id] ?? '').trim();
-    if (!message) {
-      toast.error('Please enter a message first');
+  const handleRejectItem = async (item: LostItem) => {
+    const reason = (rejectReason[item.id] || '').trim();
+    if (!reason) {
+      toast.error('Please provide a rejection reason');
       return;
     }
 
     try {
-      setSendingMessageFor(claim.id);
-      await sendAdminMessageToClaimant({
-        claimId: claim.id,
-        claimantEmail: claim.claimantEmail,
-        message,
-        itemId: claim.itemId,
-        adminUserId: user?.id,
+      setProcessingId(item.id);
+      await updateItem(item.id, {
+        approvalStatus: 'rejected',
+        approvedBy: user?.id,
+        approvedAt: new Date().toISOString(),
+        rejectionReason: reason,
       });
-
-      const claimCase = claimCases[claim.id] ?? await ensureClaimCaseForClaim(claim.id);
-      await addClaimCaseEvent({
-        claimCaseId: claimCase.id,
-        eventType: 'message_sent',
-        actorUserId: user?.id,
-        notes: message,
+      toast.success('Item rejected');
+      setRejectReason(prev => {
+        const updated = { ...prev };
+        delete updated[item.id];
+        return updated;
       });
-
-      setMessageDrafts(prev => ({ ...prev, [claim.id]: '' }));
-      toast.success('Message queued for delivery');
-      if (selectedClaimId === claim.id) {
-        const events = await fetchClaimCaseEvents(claimCase.id);
-        setCaseEvents((prev) => ({ ...prev, [claim.id]: events }));
-      }
-    } catch (error: any) {
-      console.error('Failed to send admin message:', error);
-      toast.error('Failed to send message', {
-        description: error?.message || 'Please try again.',
-      });
-    } finally {
-      setSendingMessageFor(null);
-    }
-  };
-
-  const handleSaveNotes = async (claim: ClaimRequest) => {
-    const notes = (notesDrafts[claim.id] ?? '').trim();
-    try {
-      setSavingNotesFor(claim.id);
-      await updateClaim(claim.id, { internalNotes: notes });
-      const claimCase = claimCases[claim.id] ?? await ensureClaimCaseForClaim(claim.id);
-      await addClaimCaseEvent({
-        claimCaseId: claimCase.id,
-        eventType: 'admin_note',
-        actorUserId: user?.id,
-        notes,
-      });
-      toast.success('Notes saved');
-      await loadData();
-      if (selectedClaimId === claim.id) {
-        const events = await fetchClaimCaseEvents(claimCase.id);
-        setCaseEvents((prev) => ({ ...prev, [claim.id]: events }));
-      }
+      setRejectingId(null);
+      await loadItems();
     } catch (error) {
-      console.error('Failed to save notes:', error);
-      toast.error('Failed to save notes');
+      console.error('Failed to reject:', error);
+      toast.error('Failed to reject item');
     } finally {
-      setSavingNotesFor(null);
+      setProcessingId(null);
     }
   };
 
-  const handleFlagSuspicious = async (claim: ClaimRequest) => {
+  const handleApproveClaim = async (claim: ClaimRequest) => {
     try {
-      setActionBusyClaimId(claim.id);
-      const claimCase = claimCases[claim.id] ?? await ensureClaimCaseForClaim(claim.id);
-      const updatedCase = await updateClaimCase(claimCase.id, {
-        priority: 'urgent',
-        state: claimCase.state,
+      setProcessingId(claim.id);
+      await updateClaim(claim.id, {
+        status: 'approved',
+        reviewedBy: user?.id,
+        reviewedAt: new Date().toISOString(),
       });
-      if (updatedCase) {
-        await addClaimCaseEvent({
-          claimCaseId: updatedCase.id,
-          eventType: 'flagged_suspicious',
-          actorUserId: user?.id,
-          notes: 'Flagged as suspicious for review',
-        });
-      }
-      await loadData();
-      toast.success('Flagged for review');
+      toast.success('Claim approved - applicant can now come to office');
+      await loadItems();
     } catch (error) {
-      console.error('Failed to flag claim:', error);
-      toast.error('Failed to flag claim');
+      console.error('Failed to approve claim:', error);
+      toast.error('Failed to approve claim');
     } finally {
-      setActionBusyClaimId(null);
+      setProcessingId(null);
     }
   };
 
-  const pendingClaims = claims.filter(c => c.status === 'pending' || c.status === 'needs_info');
+  const handleRejectClaim = async (claim: ClaimRequest) => {
+    const reason = (claimRejectReason[claim.id] || '').trim();
+    if (!reason) {
+      toast.error('Please provide a rejection reason');
+      return;
+    }
 
-  const filteredClaims = claims.filter((claim) => {
-    if (!searchTerm.trim()) return true;
-    const item = items.find(i => i.id === claim.itemId);
-    const haystack = [
-      claim.claimantName,
-      claim.claimantEmail,
-      claim.claimantPhone,
-      claim.claimantStudentId,
-      item?.title,
-      item?.location,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return haystack.includes(searchTerm.trim().toLowerCase());
-  });
+    try {
+      setProcessingId(claim.id);
+      await updateClaim(claim.id, {
+        status: 'rejected',
+        reviewedBy: user?.id,
+        reviewedAt: new Date().toISOString(),
+        internalNotes: reason,
+      });
+      toast.success('Claim rejected');
+      setClaimRejectReason(prev => {
+        const updated = { ...prev };
+        delete updated[claim.id];
+        return updated;
+      });
+      setClaimRejectingId(null);
+      await loadItems();
+    } catch (error) {
+      console.error('Failed to reject claim:', error);
+      toast.error('Failed to reject claim');
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
-  const selectedClaim = claims.find((claim) => claim.id === selectedClaimId) ?? null;
-  const selectedItem = selectedClaim ? items.find(i => i.id === selectedClaim.itemId) ?? null : null;
-  const selectedCase = selectedClaim ? claimCases[selectedClaim.id] ?? null : null;
-  const selectedEvents = selectedClaim ? caseEvents[selectedClaim.id] ?? [] : [];
+  const displayItems = activeTab === 'pending-items'
+    ? pendingItems
+    : activeTab === 'pending-claims'
+    ? pendingClaims
+    : (searchTerm ? items.filter(i =>
+        i.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        i.studentId?.toLowerCase().includes(searchTerm.toLowerCase())
+      ) : items);
 
   return (
     <Layout>
@@ -388,504 +245,458 @@ export default function AdminPage() {
               Admin Dashboard
             </h1>
             <p className="text-lg text-muted-foreground">
-              Manage found items and review claim requests.
+              Review and approve submitted items and claims.
             </p>
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
             <StatCard
-              icon={Package}
-              value={stats.total}
-              label="Total Items"
-              color="text-info"
-              bgColor="bg-info/15"
-            />
-            <StatCard
-              icon={Search}
-              value={stats.found}
-              label="Found Listings"
-              color="text-accent"
-              bgColor="bg-accent/15"
-            />
-            <StatCard
-              icon={Megaphone}
-              value={stats.missing}
-              label="Missing Reports"
-              color="text-destructive"
-              bgColor="bg-destructive/10"
-            />
-            <StatCard
-              icon={ClipboardList}
-              value={stats.pendingClaims}
-              label="Pending Claims"
+              icon={AlertCircle}
+              value={stats.pendingItems}
+              label="Pending Items"
               color="text-warning"
               bgColor="bg-warning/15"
             />
             <StatCard
-              icon={CheckCircle2}
-              value={stats.returned}
-              label="Items Returned"
+              icon={FileText}
+              value={stats.pendingClaims}
+              label="Pending Claims"
+              color="text-info"
+              bgColor="bg-info/15"
+            />
+            <StatCard
+              icon={Check}
+              value={stats.approvedItems + stats.approvedClaims}
+              label="Total Approved"
               color="text-success"
               bgColor="bg-success/15"
+            />
+            <StatCard
+              icon={X}
+              value={stats.rejectedItems + stats.rejectedClaims}
+              label="Total Rejected"
+              color="text-destructive"
+              bgColor="bg-destructive/15"
             />
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-2 mb-6">
+          <div className="flex gap-2 mb-6 flex-wrap">
             <button
-              onClick={() => setActiveTab('review')}
+              onClick={() => setActiveTab('pending-items')}
               className={cn(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                activeTab === 'review'
-                  ? 'bg-accent text-accent-foreground'
+                activeTab === 'pending-items'
+                  ? 'bg-warning text-warning-foreground'
                   : 'bg-card border border-border text-muted-foreground hover:text-foreground'
               )}
             >
-              Review Center ({pendingClaims.length})
-              {pendingClaims.length > 0 && (
-                <span className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive" />
+              Pending Items ({stats.pendingItems})
+              {stats.pendingItems > 0 && (
+                <span className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
               )}
             </button>
             <button
-              onClick={() => setActiveTab('items')}
+              onClick={() => setActiveTab('pending-claims')}
               className={cn(
                 'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                activeTab === 'items'
-                  ? 'bg-accent text-accent-foreground'
+                activeTab === 'pending-claims'
+                  ? 'bg-info text-info-foreground'
                   : 'bg-card border border-border text-muted-foreground hover:text-foreground'
               )}
             >
-              All Items ({items.length})
+              Pending Claims ({stats.pendingClaims})
+              {stats.pendingClaims > 0 && (
+                <span className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive animate-pulse" />
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('all-items')}
+              className={cn(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                activeTab === 'all-items'
+                  ? 'bg-warning text-warning-foreground'
+                  : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+              )}
+            >
+              All Items ({stats.totalItems})
             </button>
           </div>
 
-          {/* Items Table */}
-          {activeTab === 'items' && (
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border bg-secondary/50">
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Item
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Category
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Location
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Date
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {isLoading ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <tr key={i}>
-                          <td colSpan={6} className="px-6 py-4">
-                            <div className="h-6 bg-muted rounded animate-pulse" />
-                          </td>
-                        </tr>
-                      ))
-                    ) : items.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                          No items found
-                        </td>
-                      </tr>
-                    ) : (
-                      items.map((item) => (
-                        <tr key={item.id} className="hover:bg-secondary/30 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-lg">
-                                {categoryIcons[item.category]}
-                              </div>
-                              <div>
-                                <p className="font-medium text-foreground truncate max-w-[200px]">
-                                  {item.title}
-                                </p>
-                              </div>
+          {/* Search Bar for All Items Tab */}
+          {activeTab === 'all-items' && (
+            <div className="mb-6">
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by title, student name, or ID..."
+                className="max-w-md"
+              />
+            </div>
+          )}
+
+          {/* Items/Claims Grid */}
+          <div className="grid grid-cols-1 gap-6">
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-48 bg-muted rounded-2xl animate-pulse" />
+              ))
+            ) : activeTab === 'pending-claims' ? (
+              // CLAIMS VIEW
+              pendingClaims.length === 0 ? (
+                <div className="text-center py-12 bg-card border border-border rounded-2xl">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No pending claims to approve</p>
+                </div>
+              ) : (
+                pendingClaims.map((claim) => (
+                  <div
+                    key={claim.id}
+                    className="bg-card border border-info/50 bg-info/5 rounded-2xl p-6 transition-colors"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                      {/* Claim Info */}
+                      <div className="md:col-span-2">
+                        <div className="flex gap-4">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-secondary text-2xl flex-shrink-0">
+                            <FileText className="h-8 w-8 text-info" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground text-lg line-clamp-2">
+                              {claim.itemTitle || 'Unknown Item'}
+                            </h3>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {claim.proofDescription}
+                            </p>
+                            <div className="flex gap-2 mt-2 flex-wrap">
+                              <span
+                                className={cn(
+                                  'px-2 py-0.5 rounded text-xs font-medium',
+                                  claim.status === 'pending'
+                                    ? 'bg-info/20 text-info'
+                                    : claim.status === 'approved'
+                                    ? 'bg-success/20 text-success'
+                                    : claim.status === 'rejected'
+                                    ? 'bg-destructive/20 text-destructive'
+                                    : 'bg-secondary/20 text-foreground'
+                                )}
+                              >
+                                {claim.status}
+                              </span>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground">
-                            {categoryLabels[item.category]}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground truncate max-w-[150px]">
-                            {item.location}
-                          </td>
-                          <td className="px-6 py-4 text-sm text-muted-foreground whitespace-nowrap">
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Claimant Info */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Claimant</p>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-foreground font-medium">{claim.claimantName}</p>
+                          </div>
+                          {claim.claimantStudentId && (
+                            <p className="text-muted-foreground">ID: {claim.claimantStudentId}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                            <p className="text-muted-foreground text-xs truncate">{claim.claimantEmail}</p>
+                          </div>
+                          {claim.claimantPhone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-muted-foreground" />
+                              <p className="text-muted-foreground text-xs">{claim.claimantPhone}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Submission Date */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Submitted</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-foreground">
+                            {new Date(claim.submittedAt).toLocaleDateString()}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {new Date(claim.submittedAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions for Pending Claims */}
+                    {claim.status === 'pending' && (
+                      <div className="border-t border-border pt-4">
+                        {claimRejectingId === claim.id ? (
+                          <div className="space-y-3">
+                            <Textarea
+                              placeholder="Reason for rejection..."
+                              value={claimRejectReason[claim.id] || ''}
+                              onChange={(e) =>
+                                setClaimRejectReason(prev => ({
+                                  ...prev,
+                                  [claim.id]: e.target.value,
+                                }))
+                              }
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleRejectClaim(claim)}
+                                disabled={processingId === claim.id}
+                              >
+                                {processingId === claim.id ? 'Rejecting...' : 'Confirm Reject'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setClaimRejectingId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="gap-2 bg-success hover:bg-success/90"
+                              onClick={() => handleApproveClaim(claim)}
+                              disabled={processingId === claim.id}
+                            >
+                              <Check className="h-4 w-4" />
+                              {processingId === claim.id
+                                ? 'Approving...'
+                                : 'Approve (Office Visit)'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-2 text-destructive hover:text-destructive"
+                              onClick={() => setClaimRejectingId(claim.id)}
+                              disabled={processingId === claim.id}
+                            >
+                              <X className="h-4 w-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Display Info for Approved/Rejected Claims */}
+                    {claim.status !== 'pending' && (
+                      <div className="border-t border-border pt-4">
+                        <div className="text-sm">
+                          <p className="text-muted-foreground">
+                            {claim.status === 'approved'
+                              ? 'Approved for office visit on '
+                              : 'Rejected on '}
+                            {claim.reviewedAt ? new Date(claim.reviewedAt).toLocaleDateString() : 'Unknown'}
+                          </p>
+                          {claim.internalNotes && (
+                            <p className="text-destructive mt-1 text-xs">
+                              Note: {claim.internalNotes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )
+            ) : (
+              // ITEMS VIEW
+              displayItems.length === 0 ? (
+                <div className="text-center py-12 bg-card border border-border rounded-2xl">
+                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">
+                    {activeTab === 'pending-items' ? 'No items pending approval' : 'No items found'}
+                  </p>
+                </div>
+              ) : (
+                displayItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      'bg-card border rounded-2xl p-6 transition-colors',
+                      item.approvalStatus === 'pending' ? 'border-warning/50 bg-warning/5' : 'border-border'
+                    )}
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                      {/* Item Info */}
+                      <div className="md:col-span-2">
+                        <div className="flex gap-4">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-secondary text-2xl flex-shrink-0">
+                            {categoryIcons[item.category]}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-semibold text-foreground text-lg line-clamp-2">
+                              {item.title}
+                            </h3>
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                              {item.description}
+                            </p>
+                            <div className="flex gap-2 mt-2 flex-wrap">
+                              <span className="px-2 py-0.5 rounded text-xs bg-secondary text-foreground">
+                                {categoryLabels[item.category]}
+                              </span>
+                              <span className={cn('px-2 py-0.5 rounded text-xs', statusColors[item.status])}>
+                                {item.status}
+                              </span>
+                              {item.approvalStatus && (
+                                <span
+                                  className={cn(
+                                    'px-2 py-0.5 rounded text-xs font-medium',
+                                    item.approvalStatus === 'pending'
+                                      ? 'bg-warning/20 text-warning'
+                                      : item.approvalStatus === 'approved'
+                                      ? 'bg-success/20 text-success'
+                                      : 'bg-destructive/20 text-destructive'
+                                  )}
+                                >
+                                  {item.approvalStatus}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Student Info */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Reporter</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-foreground font-medium">{item.studentName || 'N/A'}</p>
+                          <p className="text-muted-foreground">{item.studentId || 'N/A'}</p>
+                          <p className="text-muted-foreground">{item.grade || 'N/A'}</p>
+                          <p className="text-muted-foreground text-xs">{item.contactEmail}</p>
+                        </div>
+                      </div>
+
+                      {/* Location & Date */}
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-2">Details</p>
+                        <div className="space-y-1 text-sm">
+                          <p className="text-foreground">
+                            <strong>Location:</strong>
+                          </p>
+                          <p className="text-muted-foreground truncate">{item.location}</p>
+                          <p className="text-foreground mt-2">
+                            <strong>Date:</strong>
+                          </p>
+                          <p className="text-muted-foreground">
                             {new Date(item.dateFound).toLocaleDateString()}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={cn('status-badge capitalize', statusColors[item.status])}>
-                              {item.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <Link href={`/item/${item.id}`}>
-                              <Button variant="ghost" size="sm" className="gap-1">
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions for Pending Items */}
+                    {item.approvalStatus === 'pending' && (
+                      <div className="border-t border-border pt-4">
+                        {rejectingId === item.id ? (
+                          <div className="space-y-3">
+                            <Textarea
+                              placeholder="Reason for rejection..."
+                              value={rejectReason[item.id] || ''}
+                              onChange={(e) =>
+                                setRejectReason(prev => ({
+                                  ...prev,
+                                  [item.id]: e.target.value,
+                                }))
+                              }
+                              rows={3}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleRejectItem(item)}
+                                disabled={processingId === item.id}
+                              >
+                                {processingId === item.id ? 'Rejecting...' : 'Confirm Reject'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setRejectingId(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="gap-2 bg-success hover:bg-success/90"
+                              onClick={() => handleApproveItem(item)}
+                              disabled={processingId === item.id}
+                            >
+                              <Check className="h-4 w-4" />
+                              {processingId === item.id ? 'Approving...' : 'Approve'}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-2 text-destructive hover:text-destructive"
+                              onClick={() => setRejectingId(item.id)}
+                              disabled={processingId === item.id}
+                            >
+                              <X className="h-4 w-4" />
+                              Reject
+                            </Button>
+                            <Link href={`/item/${item.id}`} className="ml-auto">
+                              <Button size="sm" variant="outline" className="gap-2">
                                 <Eye className="h-4 w-4" />
                                 View
                               </Button>
                             </Link>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Review Center */}
-          {activeTab === 'review' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-card border border-border rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Review Queue</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {filteredClaims.length} claims
-                    </p>
-                  </div>
-                </div>
-                <Input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by claimant, item, or email"
-                  className="mb-4"
-                />
-                <div className="space-y-3 max-h-[640px] overflow-y-auto pr-1">
-                  {isLoading && (
-                    <div className="space-y-2">
-                      {Array.from({ length: 4 }).map((_, idx) => (
-                        <div key={idx} className="h-20 bg-muted rounded-xl animate-pulse" />
-                      ))}
-                    </div>
-                  )}
-                  {!isLoading && filteredClaims.length === 0 && (
-                    <div className="text-sm text-muted-foreground text-center py-6">
-                      No claims match your search.
-                    </div>
-                  )}
-                  {!isLoading && filteredClaims.map((claim) => {
-                    const item = items.find(i => i.id === claim.itemId);
-                    const claimCase = claimCases[claim.id];
-                    const isSelected = claim.id === selectedClaimId;
-                    return (
-                      <button
-                        key={claim.id}
-                        type="button"
-                        onClick={() => setSelectedClaimId(claim.id)}
-                        className={cn(
-                          'w-full text-left rounded-xl border p-4 transition-colors',
-                          isSelected
-                            ? 'border-accent bg-accent/10'
-                            : 'border-border hover:border-accent/60 hover:bg-secondary/30'
+                          </div>
                         )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {claim.claimantName}
-                          </p>
-                          <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-medium capitalize', priorityClass(claimCase?.priority))}>
-                            {priorityLabel(claimCase?.priority)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate mb-2">
-                          {item?.title || 'Unknown Item'} • {item?.location || 'Unknown location'}
-                        </p>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="capitalize">{statusLabel(claim.status)}</span>
-                          <span>{new Date(claim.submittedAt).toLocaleDateString()}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                      </div>
+                    )}
 
-              <div className="lg:col-span-2 bg-card border border-border rounded-2xl p-6">
-                {!selectedClaim || !selectedCase ? (
-                  <div className="text-center text-muted-foreground py-24">
-                    <ClipboardList className="h-12 w-12 mx-auto mb-4" />
-                    <p>Select a claim to review.</p>
+                    {/* Display Info for Approved/Rejected Items */}
+                    {item.approvalStatus !== 'pending' && (
+                      <div className="border-t border-border pt-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm">
+                            <p className="text-muted-foreground">
+                              {item.approvalStatus === 'approved' ? 'Approved' : 'Rejected'} on{' '}
+                              {item.approvedAt
+                                ? new Date(item.approvedAt).toLocaleDateString()
+                                : 'Unknown'}
+                            </p>
+                            {item.rejectionReason && (
+                              <p className="text-destructive mt-1 text-xs">
+                                Reason: {item.rejectionReason}
+                              </p>
+                            )}
+                          </div>
+                          <Link href={`/item/${item.id}`}>
+                            <Button size="sm" variant="outline" className="gap-2">
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                      <div>
-                        <h3 className="text-2xl font-semibold text-foreground">
-                          {selectedItem?.title || 'Unknown Item'}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          Claimant: {selectedClaim.claimantName}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-secondary/60 text-foreground capitalize">
-                          {statusLabel(selectedClaim.status)}
-                        </span>
-                        <span className={cn('px-3 py-1 rounded-full text-xs font-medium capitalize', priorityClass(selectedCase.priority))}>
-                          {priorityLabel(selectedCase.priority)} priority
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-border p-4">
-                        <p className="text-xs font-semibold text-muted-foreground mb-3">Claimant details</p>
-                        <div className="space-y-2 text-sm">
-                          <p><span className="text-muted-foreground">Email:</span> {selectedClaim.claimantEmail}</p>
-                          {selectedClaim.claimantPhone && (
-                            <p><span className="text-muted-foreground">Phone:</span> {selectedClaim.claimantPhone}</p>
-                          )}
-                          {selectedClaim.claimantStudentId && (
-                            <p><span className="text-muted-foreground">Student ID:</span> {selectedClaim.claimantStudentId}</p>
-                          )}
-                          {selectedClaim.preferredContactMethod && (
-                            <p><span className="text-muted-foreground">Preferred contact:</span> {selectedClaim.preferredContactMethod.replace('_', ' ')}</p>
-                          )}
-                          <p><span className="text-muted-foreground">Submitted:</span> {new Date(selectedClaim.submittedAt).toLocaleString()}</p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-border p-4">
-                        <p className="text-xs font-semibold text-muted-foreground mb-3">Item details</p>
-                        <div className="space-y-2 text-sm">
-                          <p><span className="text-muted-foreground">Location:</span> {selectedItem?.location || 'Unknown'}</p>
-                          <p><span className="text-muted-foreground">Date:</span> {selectedItem?.dateFound ? new Date(selectedItem.dateFound).toLocaleDateString() : 'Unknown'}</p>
-                          <p><span className="text-muted-foreground">Status:</span> {selectedItem?.status || 'Unknown'}</p>
-                          {selectedItem?.studentName && (
-                            <p><span className="text-muted-foreground">Reporter:</span> {selectedItem.studentName}</p>
-                          )}
-                          {selectedItem?.contactEmail && (
-                            <p><span className="text-muted-foreground">Reporter email:</span> {selectedItem.contactEmail}</p>
-                          )}
-                          {selectedItem?.contactPhone && (
-                            <p><span className="text-muted-foreground">Reporter phone:</span> {selectedItem.contactPhone}</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-border p-4">
-                      <p className="text-xs font-semibold text-muted-foreground mb-3">Ownership proof</p>
-                      <p className="text-sm text-muted-foreground bg-secondary/40 p-3 rounded-lg">
-                        {selectedClaim.proofDescription}
-                      </p>
-                      {evidence[selectedClaim.id] && evidence[selectedClaim.id].length > 0 && (
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {evidence[selectedClaim.id].map((ev: any, idx: number) => (
-                            <div key={idx} className="border border-border rounded-xl p-2">
-                              {ev.file_url && (
-                                <img
-                                  src={ev.file_url}
-                                  alt={`Evidence for ${selectedItem?.title ?? 'claim'}`}
-                                  className="w-full h-48 object-cover rounded-lg"
-                                />
-                              )}
-                              <p className="mt-2 text-xs text-muted-foreground">Evidence {idx + 1}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl border border-border p-4">
-                      <p className="text-xs font-semibold text-muted-foreground mb-3">Actions</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2 text-success hover:text-success"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() =>
-                            runClaimAction({
-                              claim: selectedClaim,
-                              nextStatus: 'approved',
-                              caseState: 'approved',
-                              itemStatus: 'matched',
-                              eventType: 'approved',
-                            })
-                          }
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                          Approve claim
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2 text-destructive hover:text-destructive"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() =>
-                            runClaimAction({
-                              claim: selectedClaim,
-                              nextStatus: 'rejected',
-                              caseState: 'rejected',
-                              eventType: 'rejected',
-                            })
-                          }
-                        >
-                          <X className="h-4 w-4" />
-                          Reject claim
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() =>
-                            runClaimAction({
-                              claim: selectedClaim,
-                              nextStatus: 'needs_info',
-                              caseState: 'verification',
-                              eventType: 'needs_info_requested',
-                              eventNotes: 'Requested additional proof from claimant',
-                            })
-                          }
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                          Request more proof
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() =>
-                            runClaimAction({
-                              claim: selectedClaim,
-                              nextStatus: 'pickup_scheduled',
-                              caseState: 'pickup_scheduled',
-                              itemStatus: 'matched',
-                              eventType: 'ready_for_pickup',
-                              eventNotes: 'Marked ready for pickup',
-                            })
-                          }
-                        >
-                          <ClipboardCheck className="h-4 w-4" />
-                          Mark ready for pickup
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() =>
-                            runClaimAction({
-                              claim: selectedClaim,
-                              nextStatus: 'closed',
-                              caseState: 'closed',
-                              itemStatus: 'returned',
-                              eventType: 'returned',
-                              eventNotes: 'Item returned to claimant',
-                            })
-                          }
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                          Mark returned
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-2"
-                          disabled={actionBusyClaimId === selectedClaim.id}
-                          onClick={() => handleFlagSuspicious(selectedClaim)}
-                        >
-                          <ShieldAlert className="h-4 w-4" />
-                          Flag suspicious
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-border p-4">
-                      <p className="text-xs font-semibold text-muted-foreground mb-3">Office notes</p>
-                      <Textarea
-                        value={notesDrafts[selectedClaim.id] ?? selectedClaim.internalNotes ?? ''}
-                        onChange={(e) =>
-                          setNotesDrafts((prev) => ({
-                            ...prev,
-                            [selectedClaim.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Add internal notes for staff..."
-                        rows={4}
-                        className="mb-3"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={() => handleSaveNotes(selectedClaim)}
-                        disabled={savingNotesFor === selectedClaim.id}
-                      >
-                        {savingNotesFor === selectedClaim.id ? 'Saving...' : 'Save notes'}
-                      </Button>
-                    </div>
-
-                    <div className="rounded-xl border border-border p-4">
-                      <p className="text-xs font-semibold text-muted-foreground mb-3">Message claimant</p>
-                      <Textarea
-                        value={messageDrafts[selectedClaim.id] ?? ''}
-                        onChange={(e) =>
-                          setMessageDrafts(prev => ({
-                            ...prev,
-                            [selectedClaim.id]: e.target.value,
-                          }))
-                        }
-                        placeholder="Send guidance or pickup instructions..."
-                        rows={3}
-                        className="mb-3"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={() => handleSendMessage(selectedClaim)}
-                        disabled={sendingMessageFor === selectedClaim.id}
-                      >
-                        {sendingMessageFor === selectedClaim.id ? 'Sending...' : 'Send message'}
-                      </Button>
-                    </div>
-
-                    <div className="rounded-xl border border-border p-4">
-                      <p className="text-xs font-semibold text-muted-foreground mb-3">Case history</p>
-                      {selectedEvents.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No events recorded yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {selectedEvents.map((event) => (
-                            <div key={event.id} className="flex items-start gap-3 text-sm">
-                              <div className="mt-1 h-2 w-2 rounded-full bg-accent" />
-                              <div>
-                                <p className="font-medium text-foreground capitalize">
-                                  {event.eventType.replace(/_/g, ' ')}
-                                </p>
-                                {event.notes && (
-                                  <p className="text-muted-foreground">{event.notes}</p>
-                                )}
-                                <p className="text-xs text-muted-foreground">
-                                  {new Date(event.createdAt).toLocaleString()}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+                ))
+              )
+            )}
+          </div>
         </div>
       </section>
     </Layout>
